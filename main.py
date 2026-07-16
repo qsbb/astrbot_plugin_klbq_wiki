@@ -23,17 +23,45 @@ USER_AGENT = (
 )
 
 BUILTIN_ALIASES = {
+    # 角色常用别名
+    "明": "明",
+    "米雪儿": "米雪儿",
+    "白毛": "米雪儿",
+    "心夏": "心夏",
     "奶妈": "心夏",
     "心夏老师": "心夏",
     "心夏酱": "心夏",
-    "心夏武器": "空境",
-    "心夏的武器": "空境",
+    "信": "信",
+    "令": "令",
     "令哥": "令",
+    "拉薇": "拉薇",
     "拉薇薇": "拉薇",
-    "大小姐": "玛德蕾娜·利里",
+    "星绘": "星绘",
+    "画家": "星绘",
+    "伊薇特": "伊薇特",
+    "熊妹": "伊薇特",
+    "奥黛丽": "奥黛丽",
+    "机枪姐": "奥黛丽",
+    "白墨": "白墨",
+    "白墨老师": "白墨",
     "玛德蕾娜": "玛德蕾娜·利里",
+    "玛德蕾娜·利里": "玛德蕾娜·利里",
+    "大小姐": "玛德蕾娜·利里",
     "加拉蒂亚": "加拉蒂亚·利里",
-    "白毛": "米雪儿",
+    "加拉蒂亚·利里": "加拉蒂亚·利里",
+    "香奈美": "香奈美",
+    "艾卡莎": "艾卡莎",
+    "芙拉薇娅": "芙拉薇娅",
+    "梅瑞狄斯": "梅瑞狄斯",
+    "绯莎": "绯莎",
+    "钟艾莉": "钟艾莉",
+    "艾莉": "钟艾莉",
+    "令音": "令音",
+    "卜卜": "卜卜",
+    "富格": "富格",
+    "柯西街": "柯西街",
+    "米雪儿·李": "米雪儿",
+    # “角色武器 / 角色的武器”会动态解析到该角色的武器页面
 }
 
 ROLE_FIELDS = [
@@ -42,19 +70,23 @@ ROLE_FIELDS = [
     "饮食习惯", "个性语录", "简介", "观测语录", "武器", "武器类型",
 ]
 WEAPON_FIELDS = [
-    "名称", "别名", "类型", "武器类型", "归属角色", "角色", "稀有度", "原型", "开火模式",
-    "伤害", "基础伤害", "头部伤害", "身体伤害", "腿部伤害", "护甲伤害", "射速", "射程",
-    "弹匣容量", "备弹", "换弹时间", "装填", "移动速度", "移速", "开镜移速", "跑步速度",
-    "举枪速度", "精准度", "后坐力", "穿透", "简介",
+    "名称", "使用者", "归属角色", "角色", "类型", "武器类型", "介绍", "开火模式", "辅助攻击",
+    "放大倍率", "射速", "射速（移动端）", "瞄准速度", "瞄准速度（移动端）", "散射控制",
+    "后坐力控制", "弹匣容量", "装填速度", "蓄力速度", "弦化伤害", "10米伤害", "20米伤害",
+    "30米伤害", "40米伤害", "50米伤害", "基础伤害", "部位系数", "拉栓时间", "换弹动作时间",
+    "后坐力恢复时间", "蓄力时间", "等待开镜时间", "初段蓄力时间", "完成蓄力时间",
+    "移动速度", "持枪移速", "开镜移速", "跑步速度", "举枪速度",
+    "精准度", "后坐力", "穿透", "原型", "简介",
 ]
 FIELD_ALIASES = {
-    "移动速度": ["移速", "持枪移速", "持枪移动速度", "移动速度"],
-    "开镜移速": ["开镜移动速度", "开镜移速", "ADS移速"],
+    "移动速度": ["移速", "持枪移速", "持枪移动速度", "移动速度", "超弦体移速"],
+    "开镜移速": ["开镜移动速度", "开镜移速", "ADS移速", "瞄准移动速度"],
     "弹匣容量": ["弹匣", "载弹量", "弹夹容量", "弹匣容量"],
-    "换弹时间": ["换弹", "换弹速度", "换弹时间", "装填时间"],
-    "头部伤害": ["爆头伤害", "头部伤害"],
-    "身体伤害": ["躯干伤害", "身体伤害", "身体"],
-    "腿部伤害": ["腿部伤害", "腿部"],
+    "装填速度": ["换弹", "换弹速度", "换弹时间", "装填时间", "装填速度"],
+    "头部伤害": ["爆头伤害", "头部伤害", "头部"],
+    "身体伤害": ["躯干伤害", "身体伤害", "上肢", "身体"],
+    "腿部伤害": ["腿部伤害", "下肢", "腿部"],
+    "使用者": ["使用者", "归属角色", "角色"],
 }
 
 CARD_TEMPLATE = """
@@ -107,6 +139,8 @@ class _WikiTableParser(HTMLParser):
         self.current_cell_parts: list[str] = []
         self.current_row: list[str] = []
         self.rows: list[list[str]] = []
+        self.tables: list[list[list[str]]] = []
+        self.current_table_rows: list[list[str]] = []
         self.links: list[tuple[str, str]] = []
         self.current_href = ""
         self.current_link_parts: list[str] = []
@@ -115,6 +149,8 @@ class _WikiTableParser(HTMLParser):
         attrs_dict = dict(attrs)
         if tag == "table":
             self.table_depth += 1
+            if self.table_depth == 1:
+                self.current_table_rows = []
         elif tag == "tr" and self.table_depth > 0:
             self.in_row = True
             self.current_row = []
@@ -129,6 +165,9 @@ class _WikiTableParser(HTMLParser):
 
     def handle_endtag(self, tag):
         if tag == "table" and self.table_depth > 0:
+            if self.table_depth == 1 and self.current_table_rows:
+                self.tables.append(self.current_table_rows)
+                self.current_table_rows = []
             self.table_depth -= 1
         elif tag in {"td", "th"} and self.in_cell:
             text = self._clean("".join(self.current_cell_parts))
@@ -139,6 +178,8 @@ class _WikiTableParser(HTMLParser):
         elif tag == "tr" and self.in_row:
             if self.current_row:
                 self.rows.append(self.current_row)
+                if self.table_depth == 1:
+                    self.current_table_rows.append(self.current_row)
             self.in_row = False
             self.current_row = []
         elif tag == "a" and self.current_href:
@@ -164,7 +205,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.1.1",
+    "1.2.0",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -247,6 +288,9 @@ class KlbqWikiPlugin(Star):
         return None
 
     async def _lookup(self, keyword: str) -> Optional[dict]:
+        weapon_page = await self._lookup_role_weapon(keyword)
+        if weapon_page:
+            return weapon_page
         resolved = self.aliases.get(keyword, keyword)
         page = await self._query_page(resolved)
         if page:
@@ -255,6 +299,24 @@ class KlbqWikiPlugin(Star):
         if not title:
             return None
         return await self._query_page(title)
+
+    async def _lookup_role_weapon(self, keyword: str) -> Optional[dict]:
+        if not keyword.endswith("武器") and not keyword.endswith("的武器"):
+            return None
+        role_query = keyword.removesuffix("的武器").removesuffix("武器").strip()
+        if not role_query:
+            return None
+        role_title = self.aliases.get(role_query, role_query)
+        role_page = await self._query_page(role_title)
+        if not role_page:
+            found_title = await self._search_title(role_title)
+            role_page = await self._query_page(found_title) if found_title else None
+        if not role_page:
+            return None
+        html = await self._query_page_html(role_page.get("title") or role_title)
+        fields = self._extract_info(html or "", role_page.get("title") or role_title) if html else {}
+        weapon = fields.get("武器")
+        return await self._query_page(weapon) if weapon else None
 
     def _extract_keyword(self, event: AstrMessageEvent, keyword: str = "") -> str:
         if keyword:
@@ -297,10 +359,77 @@ class KlbqWikiPlugin(Star):
                     fields[canonical] = fields[candidate]
                     break
 
+        self._extract_weapon_tables(parser.tables, fields)
+        self._extract_weapon_feel_text(html, fields)
         weapon = self._extract_weapon_link(parser.links, title)
         if weapon and "武器" not in fields:
             fields["武器"] = weapon
         return fields
+
+    def _extract_weapon_feel_text(self, html: str, fields: dict[str, str]):
+        text = re.sub(r"<br\s*/?>", "\n", html or "", flags=re.I)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = self._clean_text(text)
+        patterns = {
+            "拉栓时间": r"拉栓时间[:：]\s*([^\s]+秒)",
+            "后坐力恢复时间": r"后坐力恢复时间[:：]\s*([^\s]+秒)",
+            "蓄力时间": r"蓄力时间[:：]\s*([^\s]+秒)",
+            "等待开镜时间": r"等待开镜时间[:：]\s*([^\s]+秒)",
+            "初段蓄力时间": r"初段蓄力时间[:：]\s*([^\s]+秒)",
+            "完成蓄力时间": r"完成蓄力时间[:：]\s*([^\s]+秒)",
+            "卸弹匣时间": r"卸弹匣[:：]\s*([^\s]+秒)",
+            "装弹匣时间": r"装弹匣[:：]\s*([^\s]+秒)",
+            "上膛/结束时间": r"上膛/结束[:：]\s*([^\s]+秒)",
+        }
+        for label, pattern in patterns.items():
+            match = re.search(pattern, text)
+            if match:
+                fields[label] = match.group(1)
+        reload_parts = [
+            f"卸弹匣 {fields['卸弹匣时间']}" if fields.get("卸弹匣时间") else "",
+            f"装弹匣 {fields['装弹匣时间']}" if fields.get("装弹匣时间") else "",
+            f"上膛/结束 {fields['上膛/结束时间']}" if fields.get("上膛/结束时间") else "",
+        ]
+        reload_text = "；".join(part for part in reload_parts if part)
+        if reload_text:
+            fields["换弹动作时间"] = reload_text
+
+    def _extract_weapon_tables(self, tables: list[list[list[str]]], fields: dict[str, str]):
+        for table in tables:
+            if len(table) < 2:
+                continue
+            header = [self._clean_label(cell) for cell in table[0]]
+            if {"头部", "上肢", "下肢"}.issubset(set(header)):
+                self._extract_damage_table(table, fields)
+            elif any("基础伤害" in " ".join(row) for row in table):
+                self._extract_coefficient_table(table, fields)
+
+    def _extract_damage_table(self, table: list[list[str]], fields: dict[str, str]):
+        header = [self._clean_label(cell) for cell in table[0]]
+        for row in table[1:]:
+            if len(row) < 4 or not re.search(r"\d+\s*米", row[0]):
+                continue
+            distance = re.sub(r"\s+", "", row[0])
+            parts = []
+            for label, value in zip(header[1:], row[1:]):
+                parts.append(f"{label} {self._compact_value(value)}")
+            fields[f"{distance}伤害"] = "；".join(parts)
+
+    def _extract_coefficient_table(self, table: list[list[str]], fields: dict[str, str]):
+        flat = [self._clean_text(cell) for row in table for cell in row if self._clean_text(cell)]
+        for index, cell in enumerate(flat):
+            if cell == "基础伤害" and index + 1 < len(flat):
+                fields.setdefault("基础伤害", flat[index + 1])
+            elif cell in {"头部", "上肢", "下肢"} and index + 1 < len(flat):
+                fields.setdefault("部位系数", "")
+                fields["部位系数"] = (fields["部位系数"] + f"{cell} {flat[index + 1]}；").strip("；")
+
+    def _compact_value(self, value: str) -> str:
+        value = self._clean_text(value)
+        value = value.replace("- ", "")
+        value = re.sub(r"\s*：\s*", ":", value)
+        value = re.sub(r"\s+", " ", value)
+        return value
 
     def _clean_label(self, label: str) -> str:
         label = self._clean_text(label).rstrip("：:")
@@ -341,8 +470,8 @@ class KlbqWikiPlugin(Star):
         for label in template:
             value = fields.get(label)
             if value:
-                if len(value) > 150:
-                    value = value[:150].rstrip() + "..."
+                if len(value) > 260:
+                    value = value[:260].rstrip() + "..."
                 items.append({"label": label, "value": value})
         return items[:24]
 

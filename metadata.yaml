@@ -1,7 +1,7 @@
 name: astrbot_plugin_klbq_wiki
 display_name: 卡拉彼丘 Wiki 查询
 desc: 通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息
-version: 1.1.1
+version: 1.2.0
 author: 凌溪
 repo: https://github.com/qsbb/astrbot_plugin_klbq_wiki
 tags:
