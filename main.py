@@ -11,8 +11,6 @@ import aiohttp
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
-
-klbq = filter.command_group("klbq")
 from astrbot.api.star import Context, Star, register
 
 
@@ -218,7 +216,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.2.6",
+    "1.2.7",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -595,6 +593,10 @@ class KlbqWikiPlugin(Star):
         except Exception as e:
             logger.error(f"[KlbqWiki] 查询异常: query={query}, error={e}\n{traceback.format_exc()}")
             yield event.plain_result(f"查询“{query}”时发生错误，已写入后台日志。")
+
+    @filter.command_group("klbq")
+    def klbq(self):
+        pass
 
     @filter.command("卡拉彼丘")
     async def query_klbq(self, event: AstrMessageEvent, keyword: str = ""):

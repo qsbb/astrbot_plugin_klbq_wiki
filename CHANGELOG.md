@@ -1,5 +1,9 @@
 # 更新日志
 
+## 1.2.7
+
+- 修复备用命令组定义位置错误导致的 `'function' object has no attribute 'command'` 加载失败
+
 ## 1.2.6
 
 - 回退中文命令处理函数为 AstrBot 更稳定支持的单参数签名
