@@ -1,4 +1,10 @@
 {
+  "birthday_count": {
+    "description": "【生日查询】返回角色数量",
+    "type": "int",
+    "default": 5,
+    "hint": "范围 1-20，超出范围会自动限制"
+  },
   "render_image": {
     "description": "【功能开关】将查询结果渲染为图片",
     "type": "bool",

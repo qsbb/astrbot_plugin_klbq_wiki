@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import re
+import time
 import traceback
+from datetime import date, datetime
 from html import escape, unescape
 from html.parser import HTMLParser
 from typing import Any, Optional
 from urllib.parse import quote, unquote, urlencode
+from zoneinfo import ZoneInfo
 
 import aiohttp
+from bs4 import BeautifulSoup
 
 from astrbot.api import logger
+import astrbot.api.message_components as Comp
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
@@ -104,7 +110,7 @@ body { display: block; }
 .tag { display: inline-block; padding: 7px 14px; border-radius: 999px; background: rgba(255, 255, 255, .14); color: #aee9ff; font-size: 20px; letter-spacing: 1px; }
 .title { margin-top: 12px; font-size: 46px; font-weight: 800; text-shadow: 0 4px 16px rgba(0, 0, 0, .28); }
 .subtitle { margin-top: 8px; color: #c6d5ff; font-size: 22px; }
-.cover { width: 100%; max-height: 320px; object-fit: cover; border-radius: 20px; margin: 4px 0 24px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.2), 0 12px 38px rgba(0,0,0,.25); }
+.cover { width: 100%; height: 440px; object-fit: contain; border-radius: 20px; margin: 4px 0 24px; padding: 12px; background: rgba(7, 14, 35, .28); box-shadow: inset 0 0 0 1px rgba(255,255,255,.2), 0 12px 38px rgba(0,0,0,.25); }
 .grid { position: relative; display: grid; grid-template-columns: repeat({{ grid_columns }}, minmax(0, 1fr)); gap: 12px; width: 100%; }
 .row { min-width: 0; padding: 14px 16px; border-radius: 16px; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .12); }
 .label { color: #90dfff; font-size: 18px; margin-bottom: 6px; }
@@ -215,7 +221,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.3.1",
+    "1.4.0",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -224,6 +230,8 @@ class KlbqWikiPlugin(Star):
         self.config = config or {}
         self._session: Optional[aiohttp.ClientSession] = None
         self.aliases = self._load_aliases()
+        self._cache: dict[str, tuple[float, Any]] = {}
+        self._wiki_semaphore = asyncio.Semaphore(4)
 
     async def terminate(self):
         if self._session and not self._session.closed:
@@ -231,7 +239,7 @@ class KlbqWikiPlugin(Star):
         logger.info("[KlbqWiki] 插件已卸载")
 
     def _load_aliases(self) -> dict[str, str]:
-        aliases = dict(BUILTIN_ALIASES)
+        aliases = {alias.casefold(): title for alias, title in BUILTIN_ALIASES.items()}
         raw = str(self.config.get("custom_aliases", "") or "").strip()
         for line in raw.splitlines():
             if "=" not in line:
@@ -240,7 +248,7 @@ class KlbqWikiPlugin(Star):
             alias = alias.strip()
             title = title.strip()
             if alias and title:
-                aliases[alias] = title
+                aliases[alias.casefold()] = title
         return aliases
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -268,6 +276,19 @@ class KlbqWikiPlugin(Star):
         except Exception as e:
             logger.warning(f"[KlbqWiki] API 请求失败: {e}")
             return None
+
+    def _cache_get(self, key: str) -> Any:
+        cached = self._cache.get(key)
+        if cached and time.time() - cached[0] < 21600:
+            logger.info(f"[KlbqWiki] 缓存命中: {key}")
+            return cached[1]
+        if cached:
+            self._cache.pop(key, None)
+        return None
+
+    def _cache_set(self, key: str, value: Any) -> Any:
+        self._cache[key] = (time.time(), value)
+        return value
 
     async def _search_title(self, keyword: str) -> Optional[str]:
         data = await self._api_get({
@@ -307,7 +328,7 @@ class KlbqWikiPlugin(Star):
         if weapon_page:
             logger.info(f"[KlbqWiki] 命中角色武器页: {weapon_page.get('title')}")
             return weapon_page
-        resolved = self.aliases.get(keyword, keyword)
+        resolved = self.aliases.get(keyword.casefold(), keyword)
         logger.info(f"[KlbqWiki] 别名解析: {keyword} -> {resolved}")
         for candidate in self._query_candidates(resolved):
             page = await self._query_page(candidate)
@@ -578,13 +599,355 @@ class KlbqWikiPlugin(Star):
         logger.info(f"[KlbqWiki] 回退文本输出: title={title}")
         yield event.plain_result(self._text_output(title, items, page_url, tip))
 
+    async def _category_members(self, category: str) -> list[str]:
+        members: list[str] = []
+        cmcontinue = ""
+        while True:
+            params = {
+                "action": "query", "format": "json", "formatversion": "2",
+                "list": "categorymembers", "cmtitle": f"分类:{category}",
+                "cmnamespace": "0", "cmlimit": "max",
+            }
+            if cmcontinue:
+                params["cmcontinue"] = cmcontinue
+            data = await self._api_get(params)
+            if not data:
+                raise RuntimeError(f"无法读取分类:{category}")
+            members.extend(item.get("title", "") for item in data.get("query", {}).get("categorymembers", []))
+            cmcontinue = data.get("continue", {}).get("cmcontinue", "")
+            if not cmcontinue:
+                return [name for name in members if name]
+
+    def _parse_birthday(self, html: str) -> Optional[tuple[int, int]]:
+        soup = BeautifulSoup(html, "html.parser")
+        cell = soup.select_one("td[itemprop=birthDate]")
+        text = cell.get_text(" ", strip=True) if cell else ""
+        if not text:
+            for row in soup.select("tr"):
+                cells = row.find_all(["th", "td"])
+                if len(cells) >= 2 and self._clean_label(cells[0].get_text(" ", strip=True)) == "生日":
+                    text = cells[1].get_text(" ", strip=True)
+                    break
+        match = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日", text)
+        if not match:
+            match = re.search(r"(?<!\d)(\d{1,2})[./-](\d{1,2})(?!\d)", text)
+        if not match:
+            return None
+        month, day = map(int, match.groups())
+        try:
+            date(2000, month, day)
+        except ValueError:
+            return None
+        return month, day
+
+    async def _birthdays(self) -> list[tuple[str, int, int]]:
+        cached = self._cache_get("birthdays")
+        if cached is not None:
+            return cached
+        names = await self._category_members("超弦体")
+
+        async def load(name: str):
+            async with self._wiki_semaphore:
+                html = await self._query_page_html(name)
+            birthday = self._parse_birthday(html or "") if html else None
+            return (name, *birthday) if birthday else None
+
+        rows = [row for row in await asyncio.gather(*(load(name) for name in names)) if row]
+        logger.info(f"[KlbqWiki] 生日解析完成: roles={len(names)}, birthdays={len(rows)}")
+        return self._cache_set("birthdays", rows)
+
+    async def _handle_birthday(self, event: AstrMessageEvent):
+        rows = await self._birthdays()
+        if not rows:
+            raise RuntimeError("Wiki 暂无可解析的角色生日数据")
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        upcoming = []
+        for name, month, day in rows:
+            year = today.year
+            try:
+                target = date(year, month, day)
+            except ValueError:
+                target = date(year, month, 28)
+            if target < today:
+                target = date(year + 1, month, day)
+            upcoming.append(((target - today).days, month, day, name))
+        count = max(1, min(20, int(self.config.get("birthday_count", 5) or 5)))
+        upcoming.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+        lines = [f"最近 {count} 个角色生日（Asia/Shanghai）："]
+        for days, month, day, name in upcoming[:count]:
+            when = "今天" if days == 0 else f"还有 {days} 天"
+            lines.append(f"{month}月{day}日　{name}（{when}）")
+        yield event.plain_result("\n".join(lines))
+
+    async def _handle_cat_language(self, event: AstrMessageEvent):
+        lines = self._cache_get("cat_language")
+        if lines is None:
+            html = await self._query_page_html("喵言喵语")
+            if not html:
+                raise RuntimeError("无法获取“喵言喵语”页面")
+            soup = BeautifulSoup(html, "html.parser")
+            nodes = soup.select(".CatLanguage > ul > li") or soup.select(".CatLanguage li")
+            lines = []
+            for node in nodes:
+                for reference in node.select("sup.reference"):
+                    reference.decompose()
+                text = self._clean_text(node.get_text(" ", strip=True))
+                if text:
+                    lines.append(text)
+            self._cache_set("cat_language", lines)
+            logger.info(f"[KlbqWiki] 喵言喵语解析完成: count={len(lines)}")
+        if not lines:
+            raise RuntimeError("“喵言喵语”页面没有可解析内容")
+        yield event.plain_result(random.choice(lines))
+
+    async def _handle_season(self, event: AstrMessageEvent):
+        html = await self._query_page_html("首页")
+        if not html:
+            raise RuntimeError("无法获取 Wiki 首页")
+        soup = BeautifulSoup(html, "html.parser")
+        timer = soup.select_one('.eventTimer[data-info="赛季"]')
+        if not timer:
+            raise RuntimeError("首页没有找到赛季计时器")
+        card = timer.find_parent(class_="klbq-activity-card")
+        title_node = card.select_one(".klbq-activity-card__title, .title, h2, h3, h4") if card else None
+        if title_node:
+            title = self._clean_text(title_node.get_text(" ", strip=True))
+        elif card:
+            card_text = self._clean_text(card.get_text(" ", strip=True))
+            title = card_text.split("赛季", 1)[0].strip(" ：:") + "赛季" if "赛季" in card_text else "当前赛季"
+        else:
+            title = "当前赛季"
+        end_raw = timer.get("data-end", "")
+        if not end_raw:
+            raise RuntimeError("赛季计时器缺少结束时间")
+        normalized = end_raw.strip().replace("Z", "+00:00")
+        try:
+            end = datetime.fromisoformat(normalized)
+        except ValueError:
+            end = None
+            for pattern in ("%Y/%m/%d %H:%M", "%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    end = datetime.strptime(end_raw.strip(), pattern)
+                    break
+                except ValueError:
+                    continue
+            if end is None:
+                raise RuntimeError(f"无法解析赛季结束时间：{end_raw}")
+        shanghai = ZoneInfo("Asia/Shanghai")
+        end = end.replace(tzinfo=shanghai) if end.tzinfo is None else end.astimezone(shanghai)
+        now = datetime.now(shanghai)
+        seconds = int((end - now).total_seconds())
+        status = "已结束" if seconds <= 0 else f"剩余 {seconds // 86400} 天 {(seconds % 86400) // 3600} 小时"
+        logger.info(f"[KlbqWiki] 赛季解析完成: title={title}, end={end.isoformat()}")
+        yield event.plain_result(f"{title}\n状态：{status}\n结束时间：{end:%Y-%m-%d %H:%M}（Asia/Shanghai）")
+
+    async def _image_urls(self, filenames: list[str]) -> dict[str, str]:
+        result: dict[str, str] = {}
+        titles = list(dict.fromkeys(f"文件:{name.removeprefix('文件:')}" for name in filenames if name))
+        for offset in range(0, len(titles), 50):
+            data = await self._api_get({
+                "action": "query", "format": "json", "formatversion": "2", "redirects": "1",
+                "prop": "imageinfo", "iiprop": "url", "titles": "|".join(titles[offset:offset + 50]),
+            })
+            if not data:
+                continue
+            for page in data.get("query", {}).get("pages", []):
+                info = page.get("imageinfo") or []
+                if info and info[0].get("url"):
+                    filename = page.get("title", "").removeprefix("文件:")
+                    result[filename] = info[0]["url"]
+                    result[filename.replace(" 背面", "_背面")] = info[0]["url"]
+        return result
+
+    async def _enhance_thumb(self, title: str, html: str, fields: dict[str, str], fallback: str) -> str:
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            is_weapon = self._is_weapon(fields, title)
+            filenames: list[str] = []
+            if is_weapon:
+                user = fields.get("使用者") or fields.get("归属角色") or fields.get("角色")
+                if user:
+                    filenames.append(f"{user}-weapon.png")
+                scopes = soup.select(".weapon-table") or soup.select("table")
+                for scope in scopes:
+                    for image in scope.select("img"):
+                        name = image.get("alt", "")
+                        if name:
+                            filenames.append(name)
+            else:
+                excluded = ("生日", "壁纸", "表情", "模型")
+                for image in soup.select("img"):
+                    name = unquote(image.get("alt", ""))
+                    if title in name and "立绘" in name and not any(word in name for word in excluded):
+                        filenames.append(name)
+                category = await self._api_get({
+                    "action": "query", "format": "json", "formatversion": "2", "generator": "categorymembers",
+                    "gcmtitle": f"分类:{title}", "gcmnamespace": "6", "gcmlimit": "max",
+                    "prop": "imageinfo", "iiprop": "url",
+                })
+                urls = []
+                for page in (category or {}).get("query", {}).get("pages", []):
+                    name = page.get("title", "").removeprefix("文件:")
+                    info = page.get("imageinfo") or []
+                    if title in name and "立绘" in name and not any(word in name for word in excluded) and info:
+                        urls.append(info[0].get("url", ""))
+                urls = [url for url in urls if url]
+                if urls:
+                    logger.info(f"[KlbqWiki] 角色立绘候选: title={title}, count={len(urls)}")
+                    return random.choice(urls)
+            urls = list((await self._image_urls(filenames)).values())
+            if urls:
+                logger.info(f"[KlbqWiki] 增强图片候选: title={title}, count={len(urls)}")
+                return urls[0] if is_weapon else random.choice(urls)
+        except Exception as e:
+            logger.warning(f"[KlbqWiki] 增强图片获取失败，使用原缩略图: title={title}, error={e}")
+        return fallback
+
+    def _parse_skins(self, html: str) -> list[dict[str, str]]:
+        soup = BeautifulSoup(html, "html.parser")
+        group = soup.select_one(".klbq-skin-group")
+        if not group:
+            return []
+        quality_names = {"0": "默认", "1": "普通", "2": "稀有", "3": "卓越", "4": "完美", "5": "传说", "6": "私服"}
+        qualities: dict[str, str] = {}
+        for item in group.select("li[data-quality]"):
+            quality = quality_names.get(item.get("data-quality", ""), item.get("data-quality", "未知"))
+            for link in item.select('a[href^="#skin_pane_"]'):
+                qualities[self._clean_text(link.get_text(" ", strip=True))] = quality
+        skins = []
+        for pane in group.select('.tab-pane[id^="skin_pane_"]'):
+            name = self._clean_text(pane.get("id", "").removeprefix("skin_pane_").replace("_", " "))
+            if not name:
+                continue
+            text = self._clean_text(pane.get_text(" ", strip=True))
+            obtain = ""
+            intro = ""
+            for row in pane.select("tr"):
+                cells = row.find_all(["th", "td"])
+                if len(cells) >= 2:
+                    label = self._clean_label(cells[0].get_text(" ", strip=True))
+                    value = self._clean_text(cells[1].get_text(" ", strip=True))
+                    if "获得" in label or "获取" in label:
+                        obtain = value
+                    elif "介绍" in label or "描述" in label:
+                        intro = value
+            skins.append({"name": name, "quality": qualities.get(name, "未知"), "intro": intro, "obtain": obtain, "text": text})
+        logger.info(f"[KlbqWiki] 皮肤解析完成: count={len(skins)}")
+        return skins
+
+    async def _skin_images(self, role: str, skin: str) -> list[str]:
+        names = [f"{role}时装-{skin}.jpg", f"{role}时装-{skin}_背面.jpg", f"{role}-{skin}立绘.png"]
+        urls = await self._image_urls(names)
+        result = []
+        for name in names:
+            if name in urls:
+                result.append(urls[name])
+        return result
+
+    async def _handle_skin(self, event: AstrMessageEvent, role_query: str, skin_query: str):
+        role = self.aliases.get(role_query.casefold(), role_query)
+        page = await self._query_page(role)
+        if not page:
+            found = await self._search_title(role)
+            page = await self._query_page(found) if found else None
+        if not page:
+            yield event.plain_result(f"未找到角色“{role_query}”。")
+            return
+        role = page.get("title") or role
+        html = await self._query_page_html(role)
+        if not html:
+            raise RuntimeError(f"无法获取“{role}”角色页面")
+        skins = self._parse_skins(html)
+        if not skins:
+            raise RuntimeError(f"“{role}”页面没有可解析的皮肤资料")
+        if skin_query == "皮肤":
+            groups: dict[str, list[str]] = {}
+            for skin in skins:
+                groups.setdefault(skin["quality"], []).append(skin["name"])
+            order = ["默认", "私服", "传说", "完美", "卓越", "稀有", "普通", "未知"]
+            lines = [f"{role}皮肤列表："]
+            for quality in order:
+                if quality in groups:
+                    lines.append(f"\n【{quality}】\n" + "、".join(groups[quality]))
+            yield event.plain_result("".join(lines))
+            return
+        if skin_query == "宿舍皮":
+            matches = [skin for skin in skins if "宿舍" in skin["obtain"] or "宿舍" in skin["text"]]
+        elif skin_query == "私皮":
+            matches = [skin for skin in skins if skin["quality"] == "私服"]
+        else:
+            matches = [skin for skin in skins if skin["name"] == skin_query]
+            if not matches:
+                matches = [skin for skin in skins if skin_query in skin["name"] or skin["name"] in skin_query]
+        if not matches:
+            yield event.plain_result(f"未找到“{role}”的皮肤“{skin_query}”。")
+            return
+        if len(matches) > 1:
+            yield event.plain_result("找到多个候选：\n" + "\n".join(f"- {skin['name']}（{skin['quality']}）" for skin in matches))
+            return
+        selected = matches[0]
+        related = [selected]
+        if selected["quality"] == "传说":
+            base = selected["name"].split("-", 1)[0]
+            related = [skin for skin in skins if skin["quality"] == "传说" and (skin["name"] == base or skin["name"].startswith(base + "-"))]
+        nodes = []
+        sender = str(event.get_sender_id())
+        image_count = 0
+        for skin in related:
+            urls = await self._skin_images(role, skin["name"])
+            image_count += len(urls)
+            details = [f"{role} · {skin['name']}", f"品质：{skin['quality']}"]
+            if skin["intro"]:
+                details.append(f"介绍：{skin['intro']}")
+            if skin["obtain"]:
+                details.append(f"获得方式：{skin['obtain']}")
+            content = [Comp.Plain("\n".join(details))]
+            content.extend(Comp.Image.fromURL(url) for url in urls)
+            nodes.append(Comp.Node(uin=sender, name="卡拉彼丘 Wiki", content=content))
+        logger.info(f"[KlbqWiki] 皮肤图片准备完成: role={role}, skin={selected['name']}, related={len(related)}, images={image_count}")
+        if not image_count:
+            details = selected["intro"] or selected["obtain"] or "暂无更多文字资料。"
+            anchor = self._page_url(role) + "#" + quote(f"skin_pane_{selected['name']}")
+            yield event.plain_result(f"{role} · {selected['name']}（{selected['quality']}）\n{details}\n详情：{anchor}")
+            return
+        yield event.chain_result(nodes)
+
     async def _handle_query(self, event: AstrMessageEvent, query: str):
         logger.info(f"[KlbqWiki] 收到查询: query={query}")
         if not query:
-            yield event.plain_result("用法：/卡拉彼丘 角色名/武器\n备用：/klbq 角色名/武器\n例如：/卡拉彼丘 心夏\n例如：/klbq 空境")
+            yield event.plain_result(
+                "用法：/klbq 角色名/武器\n"
+                "皮肤：/klbq 心夏 皮肤 或 /klbq 心夏 休日冒险\n"
+                "其他：/klbq 生日、/klbq 喵言喵语、/klbq 赛季\n"
+                "也支持 /卡拉彼丘 作为命令前缀"
+            )
             return
 
         try:
+            if query in {"生日", "角色生日"}:
+                logger.info(f"[KlbqWiki] 特殊查询分派: birthday, query={query}")
+                async for result in self._handle_birthday(event):
+                    yield result
+                return
+            if query in {"喵言喵语", "随机喵言喵语"}:
+                logger.info(f"[KlbqWiki] 特殊查询分派: cat_language, query={query}")
+                async for result in self._handle_cat_language(event):
+                    yield result
+                return
+            if query in {"赛季", "赛季结束"}:
+                logger.info(f"[KlbqWiki] 特殊查询分派: season, query={query}")
+                async for result in self._handle_season(event):
+                    yield result
+                return
+            parts = query.split(maxsplit=1)
+            if len(parts) == 2 and parts[1] in {"武器", "的武器"}:
+                query = f"{parts[0]}武器"
+            elif len(parts) == 2:
+                logger.info(f"[KlbqWiki] 特殊查询分派: skin, role={parts[0]}, skin={parts[1]}")
+                async for result in self._handle_skin(event, parts[0], parts[1]):
+                    yield result
+                return
+
             page = await self._lookup(query)
             if not page:
                 search_url = PAGE_URL.format("Special:%E6%90%9C%E7%B4%A2?") + urlencode({"search": query})
@@ -602,8 +965,9 @@ class KlbqWikiPlugin(Star):
                 extract = self._clean_text(page.get("extract") or "")
                 if extract:
                     fields["简介"] = extract[:220].rstrip() + ("..." if len(extract) > 220 else "")
-            thumb = (page.get("thumbnail") or {}).get("source") or ""
-            logger.info(f"[KlbqWiki] 解析完成: title={title}, fields={list(fields.keys())}, thumb={bool(thumb)}")
+            fallback_thumb = (page.get("thumbnail") or {}).get("source") or ""
+            thumb = await self._enhance_thumb(title, html or "", fields, fallback_thumb)
+            logger.info(f"[KlbqWiki] 解析完成: title={title}, fields={list(fields.keys())}, thumb={bool(thumb)}, enhanced={thumb != fallback_thumb}")
 
             async for result in self._send_result(event, title, page_url, fields, thumb):
                 yield result
@@ -614,9 +978,13 @@ class KlbqWikiPlugin(Star):
     @filter.event_message_type(filter.EventMessageType.ALL, priority=100)
     async def query_klbq(self, event: AstrMessageEvent):
         message = (event.message_str or "").strip()
-        if not re.match(r"^/(?:卡拉彼丘|klbq)(?:\s|$)", message, flags=re.I):
+        shortcut = re.fullmatch(r"/(角色生日|生日|随机喵言喵语|喵言喵语|赛季结束|赛季)", message)
+        if shortcut:
+            query = shortcut.group(1)
+        elif re.match(r"^/(?:卡拉彼丘|klbq)(?:\s|$)", message, flags=re.I):
+            query = self._extract_keyword(event)
+        else:
             return
-        query = self._extract_keyword(event)
         logger.info(f"[KlbqWiki] 消息监听命中: message={message!r}, query={query!r}")
         event.stop_event()
         async for result in self._handle_query(event, query):
