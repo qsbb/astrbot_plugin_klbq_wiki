@@ -40,6 +40,10 @@ pip install -r requirements.txt
 
 - `render_image`：是否将结果渲染为图片卡片
 - `send_detail_link`：图片后是否再发送详情链接
+- `image_timeout`：图片渲染超时时间，默认 8 秒
+- `text_fallback`：图片渲染失败或超时时是否发送文字结果
+- `grid_columns`：图片每行显示的资料格子数，支持 1-4
+- `card_width`：卡片最小宽度，支持 420-1200 像素
 - `custom_aliases`：自定义别名映射，每行格式为 `别名=页面标题`
 
 示例：

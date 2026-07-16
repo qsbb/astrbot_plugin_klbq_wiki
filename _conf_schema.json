@@ -11,6 +11,30 @@
     "default": true,
     "hint": "开启后会在图片后再发送一条详情链接消息"
   },
+  "image_timeout": {
+    "description": "【图片渲染】超时时间（秒）",
+    "type": "float",
+    "default": 8,
+    "hint": "范围 1-60 秒，超时后按文字回退开关处理"
+  },
+  "text_fallback": {
+    "description": "【图片渲染】失败或超时后回退文字",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后图片渲染失败或超时时发送文字结果"
+  },
+  "grid_columns": {
+    "description": "【图片布局】每行格子数",
+    "type": "int",
+    "default": 2,
+    "hint": "支持 1-4，推荐手机查看使用 2"
+  },
+  "card_width": {
+    "description": "【图片布局】卡片最小宽度（像素）",
+    "type": "int",
+    "default": 760,
+    "hint": "范围 420-1200；格子较多时可适当调大"
+  },
   "custom_aliases": {
     "description": "【别名】自定义别名映射",
     "type": "text",

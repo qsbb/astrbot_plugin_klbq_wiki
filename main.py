@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import traceback
 from html import escape, unescape
@@ -97,16 +98,16 @@ CARD_TEMPLATE = """
 <meta charset="utf-8">
 <style>
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; width: 100%; min-height: 100%; background: #10182f; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; overflow: hidden; }
-body { display: flex; justify-content: center; }
-.klbq-card { width: min(760px, calc(100vw - 32px)); position: relative; overflow: hidden; padding: 34px; color: #edf7ff; background: linear-gradient(135deg, #10182f 0%, #182a55 48%, #5d3ca0 100%); }
+html, body { margin: 0; padding: 0; width: 100%; min-width: 0; min-height: 0; background: #10182f; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; overflow: hidden; }
+body { display: block; }
+.klbq-card { width: 100%; min-width: {{ card_width }}px; position: relative; overflow: hidden; padding: 34px; color: #edf7ff; background: linear-gradient(135deg, #10182f 0%, #182a55 48%, #5d3ca0 100%); }
 .glow { position: absolute; right: -100px; top: -120px; width: 360px; height: 360px; border-radius: 50%; background: radial-gradient(circle, rgba(118, 221, 255, .48), rgba(118, 221, 255, 0) 68%); }
 .header { position: relative; display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; }
 .tag { display: inline-block; padding: 7px 14px; border-radius: 999px; background: rgba(255, 255, 255, .14); color: #aee9ff; font-size: 20px; letter-spacing: 1px; }
 .title { margin-top: 12px; font-size: 46px; font-weight: 800; text-shadow: 0 4px 16px rgba(0, 0, 0, .28); }
 .subtitle { margin-top: 8px; color: #c6d5ff; font-size: 22px; }
 .cover { width: 100%; max-height: 320px; object-fit: cover; border-radius: 20px; margin: 4px 0 24px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.2), 0 12px 38px rgba(0,0,0,.25); }
-.grid { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; }
+.grid { position: relative; display: grid; grid-template-columns: repeat({{ grid_columns }}, minmax(0, 1fr)); gap: 12px; width: 100%; }
 .row { min-width: 0; padding: 14px 16px; border-radius: 16px; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .12); }
 .label { color: #90dfff; font-size: 18px; margin-bottom: 6px; }
 .value { color: #ffffff; font-size: 21px; line-height: 1.42; word-break: break-all; overflow-wrap: anywhere; }
@@ -216,7 +217,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.2.9",
+    "1.3.0",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -512,10 +513,18 @@ class KlbqWikiPlugin(Star):
         lines.extend(["", f"详情：{page_url}"])
         return "\n".join(lines)
 
+    def _render_settings(self) -> tuple[int, int, float, bool]:
+        columns = max(1, min(4, int(self.config.get("grid_columns", 2) or 2)))
+        card_width = max(420, min(1200, int(self.config.get("card_width", 760) or 760)))
+        timeout = max(1.0, min(60.0, float(self.config.get("image_timeout", 8) or 8)))
+        fallback = bool(self.config.get("text_fallback", True))
+        return columns, card_width, timeout, fallback
+
     async def _render_image(self, title: str, kind: str, items: list[dict[str, str]], thumb: str, tip: str) -> Optional[str]:
+        columns, card_width, timeout, _ = self._render_settings()
         try:
             safe_items = [{"label": escape(i["label"]), "value": escape(i["value"])} for i in items]
-            return await self.html_render(
+            render_task = self.html_render(
                 CARD_TEMPLATE,
                 {
                     "title": escape(title),
@@ -523,14 +532,23 @@ class KlbqWikiPlugin(Star):
                     "items": safe_items,
                     "thumb": thumb,
                     "tip": escape(tip) if tip else "",
+                    "grid_columns": columns,
+                    "card_width": card_width,
                 },
                 options={
-                    "type": "png",
+                    "type": "jpeg",
+                    "quality": 88,
                     "full_page": True,
-                    "omit_background": False,
-                    "viewport": {"width": 780, "height": 1400, "device_scale_factor": 1},
+                    "animations": "disabled",
+                    "caret": "hide",
+                    "scale": "css",
+                    "timeout": timeout * 1000,
                 },
             )
+            return await asyncio.wait_for(render_task, timeout=timeout + 1)
+        except asyncio.TimeoutError:
+            logger.warning(f"[KlbqWiki] 图片渲染超时: title={title}, timeout={timeout}s")
+            return None
         except Exception as e:
             logger.warning(f"[KlbqWiki] 图片渲染失败: {e}")
             return None
@@ -544,14 +562,19 @@ class KlbqWikiPlugin(Star):
         weapon = fields.get("武器", "")
         tip = f"提示：可继续使用 /卡拉彼丘 {weapon} 查询{title}的武器。" if (not is_weapon and weapon) else ""
 
-        logger.info(f"[KlbqWiki] 输出准备: title={title}, kind={kind}, item_count={len(items)}, render_image={self.config.get('render_image', True)}")
-        if self.config.get("render_image", True):
+        _, _, timeout, text_fallback = self._render_settings()
+        render_image = bool(self.config.get("render_image", True))
+        logger.info(f"[KlbqWiki] 输出准备: title={title}, kind={kind}, item_count={len(items)}, render_image={render_image}, timeout={timeout}s, text_fallback={text_fallback}")
+        if render_image:
             image_url = await self._render_image(title, kind, items, thumb, tip)
             logger.info(f"[KlbqWiki] 图片渲染结果: title={title}, success={bool(image_url)}")
             if image_url:
                 yield event.image_result(image_url)
                 if self.config.get("send_detail_link", True):
                     yield event.plain_result(f"详情：{page_url}")
+                return
+            if not text_fallback:
+                yield event.plain_result(f"“{title}”图片渲染失败，请稍后重试。")
                 return
 
         logger.info(f"[KlbqWiki] 回退文本输出: title={title}")
