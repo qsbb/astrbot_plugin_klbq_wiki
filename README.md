@@ -1,12 +1,12 @@
 # 卡拉彼丘 Wiki 查询
 
 [![AstrBot Plugin](https://img.shields.io/badge/AstrBot-Plugin-4c8bf5)](https://astrbot.app/)
-[![Version](https://img.shields.io/badge/version-1.4.1-5c6ac4)](https://github.com/qsbb/astrbot_plugin_klbq_wiki)
+[![Version](https://img.shields.io/badge/version-1.4.3-5c6ac4)](https://github.com/qsbb/astrbot_plugin_klbq_wiki)
 
 一个面向 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 的卡拉彼丘资料查询插件。数据来自卡拉彼丘 Biligame Wiki，支持角色、武器、皮肤、近期生日、当前赛季和喵言喵语查询。
 
 - 插件名称：`astrbot_plugin_klbq_wiki`
-- 当前版本：`1.4.2`
+- 当前版本：`1.4.3`
 - 作者：凌溪
 - 项目地址：<https://github.com/qsbb/astrbot_plugin_klbq_wiki>
 
@@ -109,16 +109,7 @@ Wiki 没有统一的模型侧面资源，因此插件使用标准公开的模型
 | `/klbq 喵言喵语` | 从 Wiki 随机发送一条喵言喵语 |
 | `/klbq 随机喵言喵语` | 与 `/klbq 喵言喵语` 相同 |
 
-以下快捷指令也可直接使用：
-
-```text
-/生日
-/角色生日
-/赛季
-/赛季结束
-/喵言喵语
-/随机喵言喵语
-```
+所有查询都必须使用 `/klbq` 或 `/卡拉彼丘` 前缀，避免与其他插件的全局指令冲突。
 
 生日按照 `Asia/Shanghai` 时区计算。角色生日和喵言喵语数据会在内存中缓存 6 小时，以减少对 Wiki 的重复请求。
 
