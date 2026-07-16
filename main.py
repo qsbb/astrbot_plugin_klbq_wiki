@@ -221,7 +221,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.4.1",
+    "1.4.2",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -933,15 +933,30 @@ class KlbqWikiPlugin(Star):
             return
         yield event.chain_result([Comp.Nodes(nodes)])
 
+    @staticmethod
+    def _help_text() -> str:
+        return (
+            "卡拉彼丘 Wiki 查询帮助\n"
+            "\n【角色与武器】\n"
+            "/klbq 心夏　查询角色资料\n"
+            "/klbq 空境　查询武器资料\n"
+            "/klbq 心夏武器　查询角色武器\n"
+            "\n【皮肤】\n"
+            "/klbq 心夏 皮肤　查看皮肤列表\n"
+            "/klbq 心夏 休日冒险　查询指定皮肤\n"
+            "/klbq 心夏 私服　查询私服皮肤\n"
+            "宿舍皮、私皮等同于私服\n"
+            "\n【其他】\n"
+            "/klbq 生日　查看近期角色生日\n"
+            "/klbq 赛季　查看赛季结束时间\n"
+            "/klbq 喵言喵语　随机喵言喵语\n"
+            "\n支持 /卡拉彼丘 前缀和角色别名。"
+        )
+
     async def _handle_query(self, event: AstrMessageEvent, query: str):
         logger.info(f"[KlbqWiki] 收到查询: query={query}")
-        if not query:
-            yield event.plain_result(
-                "用法：/klbq 角色名/武器\n"
-                "皮肤：/klbq 心夏 皮肤 或 /klbq 心夏 休日冒险\n"
-                "其他：/klbq 生日、/klbq 喵言喵语、/klbq 赛季\n"
-                "也支持 /卡拉彼丘 作为命令前缀"
-            )
+        if not query or query.casefold() in {"help", "帮助"}:
+            yield event.plain_result(self._help_text())
             return
 
         try:

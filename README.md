@@ -6,7 +6,7 @@
 一个面向 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 的卡拉彼丘资料查询插件。数据来自卡拉彼丘 Biligame Wiki，支持角色、武器、皮肤、近期生日、当前赛季和喵言喵语查询。
 
 - 插件名称：`astrbot_plugin_klbq_wiki`
-- 当前版本：`1.4.0`
+- 当前版本：`1.4.2`
 - 作者：凌溪
 - 项目地址：<https://github.com/qsbb/astrbot_plugin_klbq_wiki>
 
