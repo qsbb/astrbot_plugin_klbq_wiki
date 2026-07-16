@@ -216,7 +216,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.2.7",
+    "1.2.8",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -356,6 +356,14 @@ class KlbqWikiPlugin(Star):
         except Exception:
             msg = ""
         query = re.sub(r"^/卡拉彼丘\s*", "", msg.strip()).strip()
+        return query or keyword.strip()
+
+    def _extract_ascii_keyword(self, event: AstrMessageEvent, keyword: str = "") -> str:
+        try:
+            msg = event.get_message_str() or ""
+        except Exception:
+            msg = ""
+        query = re.sub(r"^/klbq\s*", "", msg.strip(), flags=re.I).strip()
         return query or keyword.strip()
 
     def _clean_text(self, text: str) -> str:
@@ -564,7 +572,7 @@ class KlbqWikiPlugin(Star):
     async def _handle_query(self, event: AstrMessageEvent, query: str):
         logger.info(f"[KlbqWiki] 收到查询: query={query}")
         if not query:
-            yield event.plain_result("用法：/卡拉彼丘 角色名/武器\n备用：/klbq 查 角色名/武器\n例如：/卡拉彼丘 心夏\n例如：/klbq 查 空境")
+            yield event.plain_result("用法：/卡拉彼丘 角色名/武器\n备用：/klbq 角色名/武器\n例如：/卡拉彼丘 心夏\n例如：/klbq 空境")
             return
 
         try:
@@ -594,10 +602,6 @@ class KlbqWikiPlugin(Star):
             logger.error(f"[KlbqWiki] 查询异常: query={query}, error={e}\n{traceback.format_exc()}")
             yield event.plain_result(f"查询“{query}”时发生错误，已写入后台日志。")
 
-    @filter.command_group("klbq")
-    def klbq(self):
-        pass
-
     @filter.command("卡拉彼丘")
     async def query_klbq(self, event: AstrMessageEvent, keyword: str = ""):
         query = self._extract_keyword(event, keyword)
@@ -605,13 +609,9 @@ class KlbqWikiPlugin(Star):
         async for result in self._handle_query(event, query):
             yield result
 
-    @klbq.command("查")
+    @filter.command("klbq")
     async def query_klbq_short(self, event: AstrMessageEvent, keyword: str = ""):
-        query = keyword.strip()
+        query = self._extract_ascii_keyword(event, keyword)
         logger.info(f"[KlbqWiki] 备用命令触发: query={query}, raw_keyword={keyword}")
         async for result in self._handle_query(event, query):
             yield result
-
-    @klbq.command("帮助")
-    async def klbq_help(self, event: AstrMessageEvent):
-        yield event.plain_result("卡拉彼丘 Wiki 查询\n/卡拉彼丘 心夏\n/卡拉彼丘 空境\n备用命令：/klbq 查 心夏")
