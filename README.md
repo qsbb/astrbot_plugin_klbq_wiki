@@ -1,7 +1,7 @@
 # 卡拉彼丘 Wiki 查询
 
 [![AstrBot Plugin](https://img.shields.io/badge/AstrBot-Plugin-4c8bf5)](https://astrbot.app/)
-[![Version](https://img.shields.io/badge/version-1.4.0-5c6ac4)](https://github.com/qsbb/astrbot_plugin_klbq_wiki)
+[![Version](https://img.shields.io/badge/version-1.4.1-5c6ac4)](https://github.com/qsbb/astrbot_plugin_klbq_wiki)
 
 一个面向 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 的卡拉彼丘资料查询插件。数据来自卡拉彼丘 Biligame Wiki，支持角色、武器、皮肤、近期生日、当前赛季和喵言喵语查询。
 

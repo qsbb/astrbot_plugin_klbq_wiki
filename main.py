@@ -221,7 +221,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.4.0",
+    "1.4.1",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -860,20 +860,41 @@ class KlbqWikiPlugin(Star):
         skins = self._parse_skins(html)
         if not skins:
             raise RuntimeError(f"“{role}”页面没有可解析的皮肤资料")
+        skin_query = {"宿舍皮": "私服", "私皮": "私服"}.get(skin_query, skin_query)
         if skin_query == "皮肤":
             groups: dict[str, list[str]] = {}
             for skin in skins:
                 groups.setdefault(skin["quality"], []).append(skin["name"])
             order = ["默认", "私服", "传说", "完美", "卓越", "稀有", "普通", "未知"]
+            items = [
+                {"label": quality, "value": "、".join(groups[quality])}
+                for quality in order
+                if quality in groups
+            ]
+            page_url = self._page_url(role)
+            thumb = await self._enhance_thumb(role, html, {"名称": role}, (page.get("thumbnail") or {}).get("source") or "")
+            _, _, timeout, text_fallback = self._render_settings()
+            render_image = bool(self.config.get("render_image", True))
+            logger.info(
+                f"[KlbqWiki] 皮肤列表输出: role={role}, quality_count={len(items)}, "
+                f"render_image={render_image}, timeout={timeout}s"
+            )
+            if render_image:
+                image_url = await self._render_image(role, "皮肤列表", items, thumb, "输入 /klbq 角色名 皮肤名 查询皮肤详情")
+                if image_url:
+                    yield event.image_result(image_url)
+                    if self.config.get("send_detail_link", True):
+                        yield event.plain_result(f"详情：{page_url}")
+                    return
+                if not text_fallback:
+                    yield event.plain_result(f"“{role}”皮肤列表图片渲染失败，请稍后重试。")
+                    return
             lines = [f"{role}皮肤列表："]
-            for quality in order:
-                if quality in groups:
-                    lines.append(f"\n【{quality}】\n" + "、".join(groups[quality]))
+            for item in items:
+                lines.append(f"\n【{item['label']}】\n{item['value']}")
             yield event.plain_result("".join(lines))
             return
-        if skin_query == "宿舍皮":
-            matches = [skin for skin in skins if "宿舍" in skin["obtain"] or "宿舍" in skin["text"]]
-        elif skin_query == "私皮":
+        if skin_query == "私服":
             matches = [skin for skin in skins if skin["quality"] == "私服"]
         else:
             matches = [skin for skin in skins if skin["name"] == skin_query]
@@ -910,7 +931,7 @@ class KlbqWikiPlugin(Star):
             anchor = self._page_url(role) + "#" + quote(f"skin_pane_{selected['name']}")
             yield event.plain_result(f"{role} · {selected['name']}（{selected['quality']}）\n{details}\n详情：{anchor}")
             return
-        yield event.chain_result(nodes)
+        yield event.chain_result([Comp.Nodes(nodes)])
 
     async def _handle_query(self, event: AstrMessageEvent, query: str):
         logger.info(f"[KlbqWiki] 收到查询: query={query}")
