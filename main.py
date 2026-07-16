@@ -4,12 +4,12 @@ import re
 import traceback
 from html import escape, unescape
 from html.parser import HTMLParser
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import quote, unquote, urlencode
 
 import aiohttp
 
-from astrbot.api import AstrBotConfig, logger
+from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
@@ -216,11 +216,11 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.2.4",
+    "1.2.5",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
-    def __init__(self, context: Context, config: AstrBotConfig = None):
+    def __init__(self, context: Context, config: Any = None):
         super().__init__(context)
         self.config = config or {}
         self._session: Optional[aiohttp.ClientSession] = None
@@ -350,9 +350,9 @@ class KlbqWikiPlugin(Star):
         weapon = fields.get("武器")
         return await self._query_page(weapon) if weapon else None
 
-    def _extract_keyword(self, event: AstrMessageEvent, keyword: str = "") -> str:
-        if keyword:
-            return keyword.strip()
+    def _extract_keyword(self, event: AstrMessageEvent, keyword: str = "", *args: str) -> str:
+        if keyword or args:
+            return " ".join(part for part in (keyword, *args) if part).strip()
         try:
             msg = event.get_message_str() or ""
         except Exception:
@@ -563,9 +563,9 @@ class KlbqWikiPlugin(Star):
         yield event.plain_result(self._text_output(title, items, page_url, tip))
 
     @filter.command("卡拉彼丘")
-    async def query_klbq(self, event: AstrMessageEvent, keyword: str = ""):
-        query = self._extract_keyword(event, keyword)
-        logger.info(f"[KlbqWiki] 收到命令: query={query}, raw_keyword={keyword}")
+    async def query_klbq(self, event: AstrMessageEvent, keyword: str = "", *args: str):
+        query = self._extract_keyword(event, keyword, *args)
+        logger.info(f"[KlbqWiki] 收到命令: query={query}, raw_keyword={keyword}, args={args}")
         if not query:
             yield event.plain_result("用法：/卡拉彼丘 角色名/武器\n例如：/卡拉彼丘 心夏\n例如：/卡拉彼丘 空境")
             return
