@@ -96,9 +96,9 @@ CARD_TEMPLATE = """
 <meta charset="utf-8">
 <style>
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; width: 900px; min-width: 900px; background: #10182f; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; overflow: hidden; }
-body { display: block; }
-.klbq-card { width: 900px; min-width: 900px; position: relative; overflow: hidden; padding: 34px; color: #edf7ff; background: linear-gradient(135deg, #10182f 0%, #182a55 48%, #5d3ca0 100%); }
+html, body { margin: 0; padding: 0; width: 100%; min-height: 100%; background: #10182f; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; overflow: hidden; }
+body { display: flex; justify-content: center; }
+.klbq-card { width: min(760px, calc(100vw - 32px)); position: relative; overflow: hidden; padding: 34px; color: #edf7ff; background: linear-gradient(135deg, #10182f 0%, #182a55 48%, #5d3ca0 100%); }
 .glow { position: absolute; right: -100px; top: -120px; width: 360px; height: 360px; border-radius: 50%; background: radial-gradient(circle, rgba(118, 221, 255, .48), rgba(118, 221, 255, 0) 68%); }
 .header { position: relative; display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; }
 .tag { display: inline-block; padding: 7px 14px; border-radius: 999px; background: rgba(255, 255, 255, .14); color: #aee9ff; font-size: 20px; letter-spacing: 1px; }
@@ -215,7 +215,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.2.2",
+    "1.2.3",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -511,7 +511,7 @@ class KlbqWikiPlugin(Star):
                     "type": "png",
                     "full_page": True,
                     "omit_background": False,
-                    "viewport": {"width": 900, "height": 1400, "device_scale_factor": 1},
+                    "viewport": {"width": 780, "height": 1400, "device_scale_factor": 1},
                 },
             )
         except Exception as e:
