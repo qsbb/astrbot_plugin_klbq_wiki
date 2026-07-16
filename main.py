@@ -65,7 +65,7 @@ BUILTIN_ALIASES = {
 }
 
 ROLE_FIELDS = [
-    "名称", "英文名", "日文名", "别名", "性别", "身份", "定位", "阵营", "声优", "画师",
+    "名称", "英文名", "日文名", "别名", "性别", "身份", "定位", "阵营", "声优",
     "生日", "星座", "年龄", "身高", "体重", "活动区域", "超弦体特性", "兴趣爱好",
     "饮食习惯", "个性语录", "简介", "观测语录", "武器", "武器类型",
 ]
@@ -215,7 +215,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.2.1",
+    "1.2.2",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -356,6 +356,8 @@ class KlbqWikiPlugin(Star):
             if len(row) >= 2:
                 label = self._clean_label(row[0])
                 value = self._clean_text(" ".join(row[1:]))
+                if label in {"卡拉彼丘画师协会", "画师协会"}:
+                    continue
                 if label and value and label not in fields:
                     fields[label] = value
             elif len(row) == 1 and "名称" not in fields:
