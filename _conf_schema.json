@@ -9,13 +9,13 @@
     "description": "【功能开关】将查询结果渲染为图片",
     "type": "bool",
     "default": true,
-    "hint": "开启后会优先发送图片卡片；关闭后仅发送文本"
+    "hint": "默认开启，所有查询优先发送图片卡片；关闭后直接发送文字"
   },
   "send_detail_link": {
-    "description": "【功能开关】图片后发送详情链接",
+    "description": "【图片内容】显示详情链接",
     "type": "bool",
     "default": true,
-    "hint": "开启后会在图片后再发送一条详情链接消息"
+    "hint": "开启后会把 Wiki 详情链接显示在图片卡片内"
   },
   "image_timeout": {
     "description": "【图片渲染】超时时间（秒）",

@@ -2,7 +2,7 @@ name: astrbot_plugin_klbq_wiki
 display_name: 卡拉彼丘 Wiki 查询
 desc: 查询卡拉彼丘角色、武器、皮肤、生日、赛季与喵言喵语等 Biligame Wiki 信息
 short_desc: 卡拉彼丘角色、武器、皮肤与赛季资料查询
-version: 1.4.3
+version: 1.4.4
 author: 凌溪
 repo: https://github.com/qsbb/astrbot_plugin_klbq_wiki
 tags:

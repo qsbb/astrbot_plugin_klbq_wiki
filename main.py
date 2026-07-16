@@ -254,7 +254,7 @@ body { display: block; }
 .grid { position: relative; display: grid; grid-template-columns: repeat({{ grid_columns }}, minmax(0, 1fr)); gap: 12px; width: 100%; }
 .row { min-width: 0; padding: 14px 16px; border-radius: 16px; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .12); }
 .label { color: #90dfff; font-size: 18px; margin-bottom: 6px; }
-.value { color: #ffffff; font-size: 21px; line-height: 1.42; word-break: break-all; overflow-wrap: anywhere; }
+.value { color: #ffffff; font-size: 21px; line-height: 1.42; word-break: break-all; overflow-wrap: anywhere; white-space: pre-wrap; }
 .tip { position: relative; margin-top: 22px; padding: 16px 18px; border-radius: 16px; background: rgba(255, 230, 125, .16); border: 1px solid rgba(255, 230, 125, .28); color: #fff2a8; font-size: 22px; }
 .footer { position: relative; margin-top: 22px; color: rgba(237, 247, 255, .62); font-size: 16px; text-align: right; }
 </style>
@@ -361,7 +361,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "查询卡拉彼丘角色、武器、皮肤、生日、赛季与喵言喵语等 Biligame Wiki 信息",
-    "1.4.3",
+    "1.4.4",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -786,6 +786,35 @@ class KlbqWikiPlugin(Star):
             logger.warning(f"[KlbqWiki] 图片渲染失败: {e}")
             return None
 
+    async def _send_text_card(
+        self,
+        event: AstrMessageEvent,
+        title: str,
+        text: str,
+        kind: str = "查询结果",
+        tip: str = "",
+        thumb: str = "",
+    ):
+        render_image = bool(self.config.get("render_image", True))
+        _, _, timeout, _ = self._render_settings()
+        logger.info(
+            f"[KlbqWiki] 文本卡片输出: title={title}, kind={kind}, "
+            f"render_image={render_image}, timeout={timeout}s"
+        )
+        if render_image:
+            image_url = await self._render_image(
+                title,
+                kind,
+                [{"label": "内容", "value": text}],
+                thumb,
+                tip,
+            )
+            if image_url:
+                yield event.image_result(image_url)
+                return
+        logger.info(f"[KlbqWiki] 文本卡片回退: title={title}")
+        yield event.plain_result(text)
+
     async def _send_result(
         self,
         event: AstrMessageEvent,
@@ -812,14 +841,15 @@ class KlbqWikiPlugin(Star):
             f"[KlbqWiki] 输出准备: title={title}, kind={kind}, item_count={len(items)}, render_image={render_image}, timeout={timeout}s, text_fallback={text_fallback}"
         )
         if render_image:
-            image_url = await self._render_image(title, kind, items, thumb, tip)
+            card_items = list(items)
+            if self.config.get("send_detail_link", True):
+                card_items.append({"label": "详情", "value": page_url})
+            image_url = await self._render_image(title, kind, card_items, thumb, tip)
             logger.info(
                 f"[KlbqWiki] 图片渲染结果: title={title}, success={bool(image_url)}"
             )
             if image_url:
                 yield event.image_result(image_url)
-                if self.config.get("send_detail_link", True):
-                    yield event.plain_result(f"详情：{page_url}")
                 return
             if not text_fallback:
                 yield event.plain_result(f"“{title}”图片渲染失败，请稍后重试。")
@@ -920,7 +950,11 @@ class KlbqWikiPlugin(Star):
         for days, month, day, name in upcoming[:count]:
             when = "今天" if days == 0 else f"还有 {days} 天"
             lines.append(f"{month}月{day}日　{name}（{when}）")
-        yield event.plain_result("\n".join(lines))
+        text = "\n".join(lines)
+        async for result in self._send_text_card(
+            event, "近期角色生日", text, "生日查询"
+        ):
+            yield result
 
     async def _handle_cat_language(self, event: AstrMessageEvent):
         lines = self._cache_get("cat_language")
@@ -943,7 +977,9 @@ class KlbqWikiPlugin(Star):
             logger.info(f"[KlbqWiki] 喵言喵语解析完成: count={len(lines)}")
         if not lines:
             raise RuntimeError("“喵言喵语”页面没有可解析内容")
-        yield event.plain_result(random.choice(lines))
+        text = random.choice(lines)
+        async for result in self._send_text_card(event, "喵言喵语", text, "随机语录"):
+            yield result
 
     async def _handle_season(self, event: AstrMessageEvent):
         html = await self._query_page_html("首页")
@@ -1005,9 +1041,9 @@ class KlbqWikiPlugin(Star):
             else f"剩余 {seconds // 86400} 天 {(seconds % 86400) // 3600} 小时"
         )
         logger.info(f"[KlbqWiki] 赛季解析完成: title={title}, end={end.isoformat()}")
-        yield event.plain_result(
-            f"{title}\n状态：{status}\n结束时间：{end:%Y-%m-%d %H:%M}（Asia/Shanghai）"
-        )
+        text = f"状态：{status}\n结束时间：{end:%Y-%m-%d %H:%M}（Asia/Shanghai）"
+        async for result in self._send_text_card(event, title, text, "赛季信息"):
+            yield result
 
     async def _image_urls(self, filenames: list[str]) -> dict[str, str]:
         result: dict[str, str] = {}
@@ -1183,7 +1219,11 @@ class KlbqWikiPlugin(Star):
             found = await self._search_title(role)
             page = await self._query_page(found) if found else None
         if not page:
-            yield event.plain_result(f"未找到角色“{role_query}”。")
+            text = f"未找到角色“{role_query}”。"
+            async for result in self._send_text_card(
+                event, "未找到角色", text, "查询提示"
+            ):
+                yield result
             return
         role = page.get("title") or role
         html = await self._query_page_html(role)
@@ -1217,17 +1257,18 @@ class KlbqWikiPlugin(Star):
                 f"render_image={render_image}, timeout={timeout}s"
             )
             if render_image:
+                card_items = list(items)
+                if self.config.get("send_detail_link", True):
+                    card_items.append({"label": "详情", "value": page_url})
                 image_url = await self._render_image(
                     role,
                     "皮肤列表",
-                    items,
+                    card_items,
                     thumb,
                     "输入 /klbq 角色名 皮肤名 查询皮肤详情",
                 )
                 if image_url:
                     yield event.image_result(image_url)
-                    if self.config.get("send_detail_link", True):
-                        yield event.plain_result(f"详情：{page_url}")
                     return
                 if not text_fallback:
                     yield event.plain_result(
@@ -1250,15 +1291,20 @@ class KlbqWikiPlugin(Star):
                     if skin_query in skin["name"] or skin["name"] in skin_query
                 ]
         if not matches:
-            yield event.plain_result(f"未找到“{role}”的皮肤“{skin_query}”。")
+            text = f"未找到“{role}”的皮肤“{skin_query}”。"
+            async for result in self._send_text_card(
+                event, "未找到皮肤", text, "查询提示"
+            ):
+                yield result
             return
         if len(matches) > 1:
-            yield event.plain_result(
-                "找到多个候选：\n"
-                + "\n".join(
-                    f"- {skin['name']}（{skin['quality']}）" for skin in matches
-                )
+            text = "找到多个候选：\n" + "\n".join(
+                f"- {skin['name']}（{skin['quality']}）" for skin in matches
             )
+            async for result in self._send_text_card(
+                event, f"{role}皮肤候选", text, "皮肤查询"
+            ):
+                yield result
             return
         selected = matches[0]
         related = [selected]
@@ -1290,9 +1336,11 @@ class KlbqWikiPlugin(Star):
         if not image_count:
             details = selected["intro"] or selected["obtain"] or "暂无更多文字资料。"
             anchor = self._page_url(role) + "#" + quote(f"skin_pane_{selected['name']}")
-            yield event.plain_result(
-                f"{role} · {selected['name']}（{selected['quality']}）\n{details}\n详情：{anchor}"
-            )
+            text = f"{role} · {selected['name']}（{selected['quality']}）\n{details}\n详情：{anchor}"
+            async for result in self._send_text_card(
+                event, selected["name"], text, "皮肤详情"
+            ):
+                yield result
             return
         yield event.chain_result([Comp.Nodes(nodes)])
 
@@ -1319,7 +1367,11 @@ class KlbqWikiPlugin(Star):
     async def _handle_query(self, event: AstrMessageEvent, query: str):
         logger.info(f"[KlbqWiki] 收到查询: query={query}")
         if not query or query.casefold() in {"help", "帮助"}:
-            yield event.plain_result(self._help_text())
+            text = self._help_text()
+            async for result in self._send_text_card(
+                event, "使用帮助", text, "指令说明"
+            ):
+                yield result
             return
 
         try:
@@ -1357,9 +1409,13 @@ class KlbqWikiPlugin(Star):
                 logger.info(
                     f"[KlbqWiki] 未找到条目: query={query}, search_url={search_url}"
                 )
-                yield event.plain_result(
+                text = (
                     f"未找到“{query}”的卡拉彼丘 Wiki 条目。\n可手动搜索：{search_url}"
                 )
+                async for result in self._send_text_card(
+                    event, "未找到条目", text, "查询提示"
+                ):
+                    yield result
                 return
 
             title = page.get("title") or self.aliases.get(query.casefold(), query)
@@ -1390,7 +1446,11 @@ class KlbqWikiPlugin(Star):
             logger.error(
                 f"[KlbqWiki] 查询异常: query={query}, error={e}\n{traceback.format_exc()}"
             )
-            yield event.plain_result(f"查询“{query}”时发生错误，已写入后台日志。")
+            text = f"查询“{query}”时发生错误，已写入后台日志。"
+            async for result in self._send_text_card(
+                event, "查询失败", text, "错误提示"
+            ):
+                yield result
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=100)
     async def query_klbq(self, event: AstrMessageEvent):
