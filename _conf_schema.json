@@ -11,11 +11,17 @@
     "default": true,
     "hint": "默认开启，所有查询优先发送图片卡片；关闭后直接发送文字"
   },
+  "cat_language_image": {
+    "description": "【喵言喵语】使用图片发送",
+    "type": "bool",
+    "default": false,
+    "hint": "默认关闭，关闭时原样发送文字；开启后尝试生成图片，失败时回退文字"
+  },
   "send_detail_link": {
-    "description": "【图片内容】显示详情链接",
+    "description": "【详情链接】发送 Wiki 链接",
     "type": "bool",
     "default": true,
-    "hint": "开启后会把 Wiki 详情链接显示在图片卡片内"
+    "hint": "开启后在查询结果后单独发送原始 Wiki 链接，不会转为图片"
   },
   "image_timeout": {
     "description": "【图片渲染】超时时间（秒）",

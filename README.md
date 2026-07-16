@@ -1,12 +1,12 @@
 # 卡拉彼丘 Wiki 查询
 
 [![AstrBot Plugin](https://img.shields.io/badge/AstrBot-Plugin-4c8bf5)](https://astrbot.app/)
-[![Version](https://img.shields.io/badge/version-1.4.4-5c6ac4)](https://github.com/qsbb/astrbot_plugin_klbq_wiki)
+[![Version](https://img.shields.io/badge/version-1.4.5-5c6ac4)](https://github.com/qsbb/astrbot_plugin_klbq_wiki)
 
 一个面向 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 的卡拉彼丘资料查询插件。数据来自卡拉彼丘 Biligame Wiki，支持角色、武器、皮肤、近期生日、当前赛季和喵言喵语查询。
 
 - 插件名称：`astrbot_plugin_klbq_wiki`
-- 当前版本：`1.4.4`
+- 当前版本：`1.4.5`
 - 作者：凌溪
 - 项目地址：<https://github.com/qsbb/astrbot_plugin_klbq_wiki>
 
@@ -20,7 +20,7 @@
 - 传说皮肤自动合并基础形态及各进阶形态
 - 查询近期角色生日、当前赛季及结束时间
 - 从 Wiki 随机获取一条喵言喵语
-- 所有查询结果默认渲染为图片；生图超时或失败时自动回退文字。
+- 查询结果默认渲染为图片，生图失败时回退文字；链接始终原样发送，喵言喵语默认发送文字。
 - 支持调整图片宽度、每行格子数和渲染超时
 - 支持用户自定义别名
 
@@ -147,8 +147,9 @@ Wiki 没有统一的模型侧面资源，因此插件使用标准公开的模型
 | 配置项 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `birthday_count` | 整数 | `5` | 生日查询返回的角色数量，范围 1–20 |
-| `render_image` | 布尔 | `true` | 是否将角色和武器资料渲染为图片卡片 |
-| `send_detail_link` | 布尔 | `true` | 图片发送后是否补充 Wiki 详情链接 |
+| `render_image` | 布尔 | `true` | 是否将查询结果优先渲染为图片卡片 |
+| `cat_language_image` | 布尔 | `false` | 是否将喵言喵语渲染为图片，关闭时原样发送文字 |
+| `send_detail_link` | 布尔 | `true` | 是否在查询结果后单独发送原始 Wiki 链接 |
 | `image_timeout` | 浮点数 | `8` | 图片渲染超时时间，范围 1–60 秒 |
 | `text_fallback` | 布尔 | `true` | 图片渲染失败或超时后是否发送文字结果 |
 | `grid_columns` | 整数 | `2` | 图片卡片每行资料格子数，范围 1–4 |
