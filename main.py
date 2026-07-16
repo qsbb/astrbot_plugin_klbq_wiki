@@ -216,7 +216,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.2.8",
+    "1.2.9",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -350,21 +350,9 @@ class KlbqWikiPlugin(Star):
         weapon = fields.get("武器")
         return await self._query_page(weapon) if weapon else None
 
-    def _extract_keyword(self, event: AstrMessageEvent, keyword: str = "") -> str:
-        try:
-            msg = event.get_message_str() or ""
-        except Exception:
-            msg = ""
-        query = re.sub(r"^/卡拉彼丘\s*", "", msg.strip()).strip()
-        return query or keyword.strip()
-
-    def _extract_ascii_keyword(self, event: AstrMessageEvent, keyword: str = "") -> str:
-        try:
-            msg = event.get_message_str() or ""
-        except Exception:
-            msg = ""
-        query = re.sub(r"^/klbq\s*", "", msg.strip(), flags=re.I).strip()
-        return query or keyword.strip()
+    def _extract_keyword(self, event: AstrMessageEvent) -> str:
+        msg = (event.message_str or "").strip()
+        return re.sub(r"^/(?:卡拉彼丘|klbq)\s*", "", msg, flags=re.I).strip()
 
     def _clean_text(self, text: str) -> str:
         text = unescape(text or "")
@@ -602,16 +590,13 @@ class KlbqWikiPlugin(Star):
             logger.error(f"[KlbqWiki] 查询异常: query={query}, error={e}\n{traceback.format_exc()}")
             yield event.plain_result(f"查询“{query}”时发生错误，已写入后台日志。")
 
-    @filter.command("卡拉彼丘")
-    async def query_klbq(self, event: AstrMessageEvent, keyword: str = ""):
-        query = self._extract_keyword(event, keyword)
-        logger.info(f"[KlbqWiki] 中文命令触发: query={query}, raw_keyword={keyword}")
-        async for result in self._handle_query(event, query):
-            yield result
-
-    @filter.command("klbq")
-    async def query_klbq_short(self, event: AstrMessageEvent, keyword: str = ""):
-        query = self._extract_ascii_keyword(event, keyword)
-        logger.info(f"[KlbqWiki] 备用命令触发: query={query}, raw_keyword={keyword}")
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=100)
+    async def query_klbq(self, event: AstrMessageEvent):
+        message = (event.message_str or "").strip()
+        if not re.match(r"^/(?:卡拉彼丘|klbq)(?:\s|$)", message, flags=re.I):
+            return
+        query = self._extract_keyword(event)
+        logger.info(f"[KlbqWiki] 消息监听命中: message={message!r}, query={query!r}")
+        event.stop_event()
         async for result in self._handle_query(event, query):
             yield result
