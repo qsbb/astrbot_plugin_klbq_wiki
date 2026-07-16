@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import traceback
 from html import escape, unescape
 from html.parser import HTMLParser
 from typing import Optional
@@ -215,7 +216,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "通过 /卡拉彼丘 角色名/武器 查询卡拉彼丘 Biligame Wiki 信息",
-    "1.2.3",
+    "1.2.4",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -284,7 +285,11 @@ class KlbqWikiPlugin(Star):
             "prop": "extracts|pageimages", "titles": title, "explaintext": "1", "pithumbsize": "800",
         })
         pages = (data or {}).get("query", {}).get("pages", [])
-        if not pages or pages[0].get("missing"):
+        if not pages:
+            logger.info(f"[KlbqWiki] 页面查询无结果: {title}")
+            return None
+        if pages[0].get("missing"):
+            logger.info(f"[KlbqWiki] 页面不存在: {title}")
             return None
         return pages[0]
 
@@ -298,17 +303,34 @@ class KlbqWikiPlugin(Star):
         return None
 
     async def _lookup(self, keyword: str) -> Optional[dict]:
+        logger.info(f"[KlbqWiki] 开始查询: keyword={keyword}")
         weapon_page = await self._lookup_role_weapon(keyword)
         if weapon_page:
+            logger.info(f"[KlbqWiki] 命中角色武器页: {weapon_page.get('title')}")
             return weapon_page
         resolved = self.aliases.get(keyword, keyword)
-        page = await self._query_page(resolved)
-        if page:
-            return page
+        logger.info(f"[KlbqWiki] 别名解析: {keyword} -> {resolved}")
+        for candidate in self._query_candidates(resolved):
+            page = await self._query_page(candidate)
+            if page:
+                logger.info(f"[KlbqWiki] 直接命中页面: candidate={candidate}, title={page.get('title')}")
+                return page
         title = await self._search_title(resolved)
+        logger.info(f"[KlbqWiki] 搜索结果: {resolved} -> {title}")
         if not title:
             return None
-        return await self._query_page(title)
+        page = await self._query_page(title)
+        if page:
+            logger.info(f"[KlbqWiki] 搜索命中页面: title={page.get('title')}")
+        return page
+
+    def _query_candidates(self, title: str) -> list[str]:
+        candidates = [title]
+        if "·" in title:
+            candidates.append(title.replace("·", ""))
+        if " " in title:
+            candidates.append(title.replace(" ", ""))
+        return list(dict.fromkeys(candidate for candidate in candidates if candidate))
 
     async def _lookup_role_weapon(self, keyword: str) -> Optional[dict]:
         if not keyword.endswith("武器") and not keyword.endswith("的武器"):
@@ -527,38 +549,50 @@ class KlbqWikiPlugin(Star):
         weapon = fields.get("武器", "")
         tip = f"提示：可继续使用 /卡拉彼丘 {weapon} 查询{title}的武器。" if (not is_weapon and weapon) else ""
 
+        logger.info(f"[KlbqWiki] 输出准备: title={title}, kind={kind}, item_count={len(items)}, render_image={self.config.get('render_image', True)}")
         if self.config.get("render_image", True):
             image_url = await self._render_image(title, kind, items, thumb, tip)
+            logger.info(f"[KlbqWiki] 图片渲染结果: title={title}, success={bool(image_url)}")
             if image_url:
                 yield event.image_result(image_url)
                 if self.config.get("send_detail_link", True):
                     yield event.plain_result(f"详情：{page_url}")
                 return
 
+        logger.info(f"[KlbqWiki] 回退文本输出: title={title}")
         yield event.plain_result(self._text_output(title, items, page_url, tip))
 
     @filter.command("卡拉彼丘")
     async def query_klbq(self, event: AstrMessageEvent, keyword: str = ""):
         query = self._extract_keyword(event, keyword)
+        logger.info(f"[KlbqWiki] 收到命令: query={query}, raw_keyword={keyword}")
         if not query:
             yield event.plain_result("用法：/卡拉彼丘 角色名/武器\n例如：/卡拉彼丘 心夏\n例如：/卡拉彼丘 空境")
             return
 
-        page = await self._lookup(query)
-        if not page:
-            search_url = PAGE_URL.format("Special:%E6%90%9C%E7%B4%A2?") + urlencode({"search": query})
-            yield event.plain_result(f"未找到“{query}”的卡拉彼丘 Wiki 条目。\n可手动搜索：{search_url}")
-            return
+        try:
+            page = await self._lookup(query)
+            if not page:
+                search_url = PAGE_URL.format("Special:%E6%90%9C%E7%B4%A2?") + urlencode({"search": query})
+                logger.info(f"[KlbqWiki] 未找到条目: query={query}, search_url={search_url}")
+                yield event.plain_result(f"未找到“{query}”的卡拉彼丘 Wiki 条目。\n可手动搜索：{search_url}")
+                return
 
-        title = page.get("title") or self.aliases.get(query, query)
-        page_url = self._page_url(title)
-        html = await self._query_page_html(title)
-        fields = self._extract_info(html or "", title) if html else {"名称": title}
-        if not fields.get("简介"):
-            extract = self._clean_text(page.get("extract") or "")
-            if extract:
-                fields["简介"] = extract[:220].rstrip() + ("..." if len(extract) > 220 else "")
-        thumb = (page.get("thumbnail") or {}).get("source") or ""
+            title = page.get("title") or self.aliases.get(query, query)
+            page_url = self._page_url(title)
+            logger.info(f"[KlbqWiki] 准备解析页面: title={title}, url={page_url}")
+            html = await self._query_page_html(title)
+            logger.info(f"[KlbqWiki] HTML 获取结果: title={title}, has_html={bool(html)}, html_len={len(html or '')}")
+            fields = self._extract_info(html or "", title) if html else {"名称": title}
+            if not fields.get("简介"):
+                extract = self._clean_text(page.get("extract") or "")
+                if extract:
+                    fields["简介"] = extract[:220].rstrip() + ("..." if len(extract) > 220 else "")
+            thumb = (page.get("thumbnail") or {}).get("source") or ""
+            logger.info(f"[KlbqWiki] 解析完成: title={title}, fields={list(fields.keys())}, thumb={bool(thumb)}")
 
-        async for result in self._send_result(event, title, page_url, fields, thumb):
-            yield result
+            async for result in self._send_result(event, title, page_url, fields, thumb):
+                yield result
+        except Exception as e:
+            logger.error(f"[KlbqWiki] 查询异常: query={query}, error={e}\n{traceback.format_exc()}")
+            yield event.plain_result(f"查询“{query}”时发生错误，已写入后台日志。")
