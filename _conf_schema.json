@@ -1,0 +1,20 @@
+{
+  "render_image": {
+    "description": "【功能开关】将查询结果渲染为图片",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后会优先发送图片卡片；关闭后仅发送文本"
+  },
+  "send_detail_link": {
+    "description": "【功能开关】图片后发送详情链接",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后会在图片后再发送一条详情链接消息"
+  },
+  "custom_aliases": {
+    "description": "【别名】自定义别名映射",
+    "type": "text",
+    "default": "",
+    "hint": "每行一条，格式：别名=页面标题，例如：心夏老师=心夏"
+  }
+}
