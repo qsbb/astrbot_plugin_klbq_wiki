@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup
 from astrbot.api import logger
 import astrbot.api.message_components as Comp
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, StarTools, register
 
 from .image_cache import ImageCache, to_file_url
 
@@ -434,7 +434,7 @@ class _WikiTableParser(HTMLParser):
     PLUGIN_NAME,
     "凌溪",
     "查询卡拉彼丘角色、武器、皮肤、生日、赛季与喵言喵语等 Biligame Wiki 信息",
-    "1.4.5",
+    "1.5.1",
     "https://github.com/qsbb/astrbot_plugin_klbq_wiki",
 )
 class KlbqWikiPlugin(Star):
@@ -446,9 +446,17 @@ class KlbqWikiPlugin(Star):
         self._cache: dict[str, tuple[float, Any]] = {}
         self._wiki_semaphore = asyncio.Semaphore(4)
         # 图片缓存实例
+        # 遵循 AstrBot 规范：持久化数据存到 data/plugin_data/<插件名>/ 下
+        # 而非插件自身目录，防止更新/重装插件时数据被覆盖
+        try:
+            cache_dir = StarTools.get_data_dir(PLUGIN_NAME) / "images"
+        except Exception as e:
+            logger.warning(f"[KlbqWiki] 获取数据目录失败，回退到相对路径: {e}")
+            cache_dir = None
         self._image_cache = ImageCache(
             enabled=bool(self.config.get("image_cache", True)),
             ttl=max(0, int(self.config.get("image_cache_ttl", 30) or 30)) * 86400,
+            cache_dir=cache_dir,
         )
 
     async def terminate(self):

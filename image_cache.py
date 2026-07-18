@@ -12,19 +12,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import os
 import time
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
 import aiohttp
 
 PLUGIN_NAME = "astrbot_plugin_klbq_wiki"
-
-# 缓存目录：插件目录下的 data/images/
-# 使用绝对路径，html_render 时需要 file:// URL
-_CACHE_DIR = Path(__file__).resolve().parent / "data" / "images"
 
 # 文件扩展名映射
 _EXT_MAP = {
@@ -74,12 +68,20 @@ class ImageCache:
     Args:
         enabled: 是否启用缓存（默认 True）
         ttl: 缓存有效期（秒），0 表示永不过期
+        cache_dir: 缓存目录路径。推荐使用 StarTools.get_data_dir() / "images"
+                   遵循 AstrBot 规范：持久化数据存到 data/plugin_data/<插件名>/ 下
     """
 
-    def __init__(self, enabled: bool = True, ttl: int = 30 * 86400):
+    def __init__(
+        self,
+        enabled: bool = True,
+        ttl: int = 30 * 86400,
+        cache_dir: Path | None = None,
+    ):
         self.enabled = enabled
         self.ttl = max(0, int(ttl))
-        self._dir = _CACHE_DIR
+        # 缓存目录：优先使用外部传入（如 StarTools.get_data_dir()），遵循 AstrBot 规范
+        self._dir = Path(cache_dir) if cache_dir else Path("data/images")
         self._ensure_dir()
         self._semaphore = asyncio.Semaphore(4)
 

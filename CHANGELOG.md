@@ -1,5 +1,19 @@
 # 更新日志
 
+## 1.5.1
+
+### 规范合规性修复
+
+对照 [AstrBot 官方插件开发规范](https://docs.astrbot.app/dev/star/plugin-new.html) 检查并修复以下问题：
+
+- **持久化数据目录合规**：缓存目录从插件自身目录 (`plugins/.../data/images/`) 改为 AstrBot 官方数据目录 (`data/plugin_data/astrbot_plugin_klbq_wiki/images/`)，使用 `StarTools.get_data_dir()` API。避免更新/重装插件时数据被覆盖。
+- **版本号一致性**：`@register` 装饰器中的版本号从 `1.4.5` 修正为 `1.5.0`，与 `metadata.yaml` 保持一致。
+- **代码格式化**：使用 `ruff` 工具检查并格式化代码（官方规范要求）。移除 `image_cache.py` 中未使用的 `os`、`Optional` 导入。
+
+### 新增依赖
+
+- 无新增第三方依赖
+
 ## 1.5.0
 
 本次更新对齐 Yunzai 版（v1.7.2）的全部功能，解决图片加载不出来的问题。
