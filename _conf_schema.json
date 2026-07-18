@@ -47,6 +47,18 @@
     "default": 760,
     "hint": "范围 420-1200；格子较多时可适当调大"
   },
+  "image_cache": {
+    "description": "【图片缓存】将查询过的图片缓存到本地",
+    "type": "bool",
+    "default": true,
+    "hint": "默认开启，将角色立绘、皮肤图缓存到 data/images/，避免重复下载"
+  },
+  "image_cache_ttl": {
+    "description": "【图片缓存】有效期（天）",
+    "type": "int",
+    "default": 30,
+    "hint": "范围 0-365，0 表示永不过期，过期后下次查询会重新下载"
+  },
   "custom_aliases": {
     "description": "【别名】自定义别名映射",
     "type": "text",
